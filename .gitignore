@@ -1,0 +1,73 @@
+# Keil MDK-ARM build outputs
+MDK-ARM/build/
+MDK-ARM/*.uvguix.*
+MDK-ARM/*.uvoptx
+MDK-ARM/*.uvprojx.bak
+MDK-ARM/*.lnp
+MDK-ARM/*.lst
+MDK-ARM/*.htm
+MDK-ARM/*.map
+MDK-ARM/*.axf
+MDK-ARM/*.hex
+MDK-ARM/*.bin
+MDK-ARM/*.elf
+MDK-ARM/*.dep
+MDK-ARM/*.crf
+MDK-ARM/*.d
+MDK-ARM/*.o
+MDK-ARM/*.sct
+
+# Object files
+*.o
+*.obj
+*.elf
+*.axf
+*.bin
+*.hex
+*.map
+*.lst
+
+# Keil project files (user-specific)
+*.uvguix.*
+*.uvoptx.bak
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build directories
+build/
+Build/
+BUILD/
+bin/
+Bin/
+BIN/
+obj/
+Obj/
+OBJ/
+out/
+Out/
+OUT/
+
+# Debug files
+*.suo
+*.user
+*.userosscache
+*.sdf
+*.opensdf
+*.db
+*.opendb
+
+# Backup files
+*.bak
+*.tmp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+

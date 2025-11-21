@@ -1,0 +1,47 @@
+##########################################################################################
+#                        Append Compiler Options For Source Files
+##########################################################################################
+
+# syntax:
+#   <your pattern>: <compiler options>
+# For get pattern syntax, please refer to: https://www.npmjs.com/package/micromatch
+#
+# examples:
+#   'main.cpp':           --cpp11 -Og ...
+#   'src/*.c':            -gnu -O2 ...
+#   'src/lib/**/*.cpp':   --cpp11 -Os ...
+#   '!Application/*.c':   -O0
+#   '**/*.c':             -O2 -gnu ...
+
+version: "2.1"
+options:
+    HAL_06_LCD:
+        files: {}
+        virtualPathFiles:
+            <virtual_root>/Application/User/gpio.c: ""
+            <virtual_root>/Application/User/dma.c: ""
+            <virtual_root>/Application/User/spi.c: ""
+            <virtual_root>/Application/User/tim.c: ""
+            <virtual_root>/Application/User/usart.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_ll_utils.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_ll_exti.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_ll_spi.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_ll_gpio.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_ll_dma.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_rcc.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_rcc_ex.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_flash.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_flash_ex.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_flash_ramfunc.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_gpio.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_exti.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_dma.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_dma_ex.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_pwr.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_pwr_ex.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_cortex.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_tim.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_hal_tim_ex.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_ll_usart.c: ""
+            <virtual_root>/Drivers/STM32G4xx_HAL_Driver/stm32g4xx_ll_rcc.c: ""
