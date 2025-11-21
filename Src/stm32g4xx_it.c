@@ -23,6 +23,8 @@
 #include "stm32g4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stm32g4xx_ll_dma.h"
+#include "../BSP/bsp_spi.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -203,7 +205,16 @@ void SysTick_Handler(void)
 void DMA1_Channel1_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel1_IRQn 0 */
-
+  // SPI1 RX DMA中断处理
+  if (LL_DMA_IsActiveFlag_TC1(DMA1)) {
+    LL_DMA_ClearFlag_TC1(DMA1);
+    bsp_spi_dma_rx_complete_callback();
+  }
+  
+  if (LL_DMA_IsActiveFlag_TE1(DMA1)) {
+    LL_DMA_ClearFlag_TE1(DMA1);
+    bsp_spi_dma_error_callback();
+  }
   /* USER CODE END DMA1_Channel1_IRQn 0 */
   /* USER CODE BEGIN DMA1_Channel1_IRQn 1 */
 
@@ -216,7 +227,16 @@ void DMA1_Channel1_IRQHandler(void)
 void DMA1_Channel2_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel2_IRQn 0 */
-
+  // SPI1 TX DMA中断处理
+  if (LL_DMA_IsActiveFlag_TC2(DMA1)) {
+    LL_DMA_ClearFlag_TC2(DMA1);
+    bsp_spi_dma_tx_complete_callback();
+  }
+  
+  if (LL_DMA_IsActiveFlag_TE2(DMA1)) {
+    LL_DMA_ClearFlag_TE2(DMA1);
+    bsp_spi_dma_error_callback();
+  }
   /* USER CODE END DMA1_Channel2_IRQn 0 */
   /* USER CODE BEGIN DMA1_Channel2_IRQn 1 */
 

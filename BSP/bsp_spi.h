@@ -80,15 +80,15 @@ bsp_spi_dma_status_t bsp_spi_dma_transmit_receive(const uint8_t* tx_buf,
 bsp_spi_dma_device_t bsp_spi_dma_get_current_device(void);
 
 /* Exported callback functions -----------------------------------------------*/
-/* @note 以下函数由stm32f1xx_it.c中的DMA中断处理器调用 */
+/* @note 以下函数由stm32g4xx_it.c中的DMA中断处理器调用 */
 
 /**
- * @brief DMA RX完成回调（在DMA1_Channel2_IRQHandler中调用）
+ * @brief DMA RX完成回调（在DMA1_Channel1_IRQHandler中调用）
  */
 void                 bsp_spi_dma_rx_complete_callback(void);
 
 /**
- * @brief DMA TX完成回调（在DMA1_Channel3_IRQHandler中调用）
+ * @brief DMA TX完成回调（在DMA1_Channel2_IRQHandler中调用）
  */
 void                 bsp_spi_dma_tx_complete_callback(void);
 

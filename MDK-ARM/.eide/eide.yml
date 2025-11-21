@@ -60,10 +60,22 @@ virtualFolder:
       files: []
       folders: []
     - name: BSP
-      files: []
+      files:
+        - path: ../BSP/bsp_common.h
+        - path: ../BSP/bsp_sdcard.c
+        - path: ../BSP/bsp_sdcard.h
+        - path: ../BSP/bsp_spi.c
+        - path: ../BSP/bsp_spi.h
       folders: []
     - name: FatFS
-      files: []
+      files:
+        - path: ../FatFS/src/diskio.c
+        - path: ../FatFS/src/diskio.h
+        - path: ../FatFS/src/diskio_sdcard.c
+        - path: ../FatFS/src/ff.c
+        - path: ../FatFS/src/ff.h
+        - path: ../FatFS/src/ffconf.h
+        - path: ../FatFS/src/integer.h
       folders: []
 dependenceList: []
 outDir: build
@@ -204,6 +216,6 @@ targets:
       OpenOCD:
         baseAddr: "0x08000000"
         bin: ""
-        interface: cmsis-dap
+        interface: cmsis-dap-v1
         target: stm32g4x
     uploader: OpenOCD

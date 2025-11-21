@@ -17,7 +17,7 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "bsp_common.h"
-#include "../Inc/main.h"  // For FLASH_CS_Pin definition
+#include "../Inc/main.h"  // For SD_CS_Pin definition
 
 /* Exported constants --------------------------------------------------------*/
 

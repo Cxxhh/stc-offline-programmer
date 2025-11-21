@@ -11,10 +11,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "bsp_sdcard.h"
 #include "bsp_spi.h"
-#include "stm32f1xx_ll_spi.h"
-#include "stm32f1xx_hal.h"
+#include "stm32g4xx_ll_spi.h"
+#include "stm32g4xx_hal.h"
 #include "gpio.h"
-// #include "bsp_w25qxx.h"
 #include <stdio.h>
 /* Private defines -----------------------------------------------------------*/
 
@@ -64,11 +63,11 @@ static uint8_t _bsp_sdcard_send_data(const uint8_t* buf, uint8_t token);
  */
 void           bsp_sdcard_select(void)
 {
-    // 先取消选择Flash芯片，避免SPI总线冲突
-    FLASH_CS_GPIO_Port->BSRR = FLASH_CS_Pin;
+    // 如果有其他SPI设备（如Flash），需要在这里取消选择它们
+    // 例如: FLASH_CS_GPIO_Port->BSRR = FLASH_CS_Pin;
 
     // 拉低CS，选中SD卡
-    SD_CS_GPIO_Port->BRR = SD_CS_Pin;
+    HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET);
 }
 
 /**
@@ -77,7 +76,7 @@ void           bsp_sdcard_select(void)
 void bsp_sdcard_deselect(void)
 {
     // 拉高CS，取消选择SD卡
-    SD_CS_GPIO_Port->BSRR = SD_CS_Pin;
+    HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);
 }
 
 /**
@@ -249,9 +248,12 @@ bsp_sdcard_result_t bsp_sdcard_init(void)
 
     // CS引脚初始化（拉高，取消选择）
     bsp_sdcard_deselect();
+    
+    // 添加延时，让SD卡上电稳定
+    HAL_Delay(10);
 
     // 发送至少74个时钟脉冲（让SD卡进入SPI模式）
-    for (uint8_t i = 0; i < 10; i++) {
+    for (uint8_t i = 0; i < 20; i++) {  // 增加到20次，更可靠
         _bsp_sdcard_spi_rw(0xFF);
     }
 
@@ -259,6 +261,7 @@ bsp_sdcard_result_t bsp_sdcard_init(void)
     retry = 200;
     do {
         r1 = _bsp_sdcard_send_cmd(SD_CMD0, 0, 0x95);
+        HAL_Delay(1);  // 每次尝试之间加小延时
     } while ((r1 != SD_IN_IDLE_STATE) && retry--);
 
     if (retry == 0) {

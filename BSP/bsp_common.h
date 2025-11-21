@@ -19,7 +19,7 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include "stm32f1xx_hal.h"
+#include "stm32g4xx_hal.h"
 
 /* Exported constants --------------------------------------------------------*/
 
