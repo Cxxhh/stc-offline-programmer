@@ -47,6 +47,12 @@ CompileFlags:
     - -D"__OPTIMISE_SPACE=1"
     - -D"__OPT_SMALL_ASSERT=1"
     - -D"__OPTIMISE_LEVEL=2"
+    - -I"null\include"
+    - -I"E:\Program Files\Keil_v5\ARM\ARM_Compiler_5.06u7\include"
+    - -I"E:\Program Files\Keil_v5\ARM\ARM_Compiler_5.06u7\include\arm_linux"
+    - -I"E:\Program
+      Files\Keil_v5\ARM\ARM_Compiler_5.06u7\include\arm_linux_compat"
+    - -I"E:\Program Files\Keil_v5\ARM\ARM_Compiler_5.06u7\include\rw"
   Remove: []
   CompilationDatabase: ./build/HAL_06_LCD
 Diagnostics:

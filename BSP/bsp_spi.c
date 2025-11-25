@@ -189,6 +189,50 @@ bsp_spi_dma_device_t bsp_spi_dma_get_current_device(void)
     return g_dma_mgr.current_device;
 }
 
+/**
+ * @brief 设置SPI数据宽度
+ * @param data_width LL_SPI_DATAWIDTH_8BIT 或 LL_SPI_DATAWIDTH_4BIT
+ * @note 需要在SPI禁用状态下调用，或确保没有正在进行的传输
+ */
+void bsp_spi_set_data_width(uint32_t data_width)
+{
+    // 禁用SPI以确保配置安全
+    LL_SPI_Disable(SPI1);
+    
+    // 等待SPI空闲
+    while (LL_SPI_IsActiveFlag_BSY(SPI1)) {
+        // 等待SPI忙标志清除
+    }
+    
+    // 设置数据宽度
+    MODIFY_REG(SPI1->CR2, SPI_CR2_DS, data_width);
+    
+    // 重新使能SPI
+    LL_SPI_Enable(SPI1);
+}
+
+/**
+ * @brief 设置SPI波特率分频器
+ * @param prescaler LL_SPI_BAUDRATEPRESCALER_DIV2/4/8/16/32/64/128/256
+ * @note 需要在SPI禁用状态下调用，或确保没有正在进行的传输
+ */
+void bsp_spi_set_baudrate_prescaler(uint32_t prescaler)
+{
+    // 禁用SPI以确保配置安全
+    LL_SPI_Disable(SPI1);
+    
+    // 等待SPI空闲
+    while (LL_SPI_IsActiveFlag_BSY(SPI1)) {
+        // 等待SPI忙标志清除
+    }
+    
+    // 设置波特率分频器
+    MODIFY_REG(SPI1->CR1, SPI_CR1_BR, prescaler);
+    
+    // 重新使能SPI
+    LL_SPI_Enable(SPI1);
+}
+
 /* Interrupt callbacks -------------------------------------------------------*/
 
 /**

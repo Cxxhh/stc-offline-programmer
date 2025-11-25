@@ -246,6 +246,10 @@ bsp_sdcard_result_t bsp_sdcard_init(void)
     g_sd_status = BSP_SDCARD_STATUS_NO_CARD;
     g_bsp_initialized = false;
 
+    // 配置SPI参数（确保不被HAL配置覆盖）
+    bsp_spi_set_data_width(LL_SPI_DATAWIDTH_8BIT);  // SD卡使用8位数据宽度
+    bsp_spi_set_baudrate_prescaler(LL_SPI_BAUDRATEPRESCALER_DIV256);  // 初始化时使用较慢速度
+
     // CS引脚初始化（拉高，取消选择）
     bsp_sdcard_deselect();
     
@@ -350,6 +354,9 @@ bsp_sdcard_result_t bsp_sdcard_init(void)
     bsp_sdcard_deselect();
     g_sd_status       = BSP_SDCARD_STATUS_CARD_READY;
     g_bsp_initialized = true; // 标记已初始化
+
+    // 初始化成功后，可以提高SPI速度以提升性能（可选）
+    // bsp_spi_set_baudrate_prescaler(LL_SPI_BAUDRATEPRESCALER_DIV4);  // 或 DIV8, DIV16 等
 
     return BSP_SDCARD_OK;
 }

@@ -1,0 +1,54 @@
+#ifndef STC_PROG_H
+#define STC_PROG_H
+
+#include <stdint.h>
+#include <stddef.h>
+
+/*
+ * Platform glue: user must provide UART/time helpers via stc_transport_t.
+ * This header is MCU/HAL agnostic so it can be used on bare metal or any SDK.
+ */
+
+typedef int      (*stc_tx_fn)(const uint8_t *buf, size_t len); /* send len bytes */
+typedef void     (*stc_baud_fn)(uint32_t baud);                /* switch baudrate */
+typedef uint32_t (*stc_now_ms_fn)(void);                       /* monotonic ms */
+typedef void     (*stc_reset_fn)(int level);                   /* optional RESET pin ctrl */
+
+typedef struct {
+    stc_tx_fn     tx;
+    stc_baud_fn   set_baud;
+    stc_now_ms_fn now_ms;
+    stc_reset_fn  reset_pin;
+} stc_transport_t;
+
+#define STC_RX_RB_SIZE 256
+
+typedef struct {
+    uint8_t         buf[STC_RX_RB_SIZE];
+    volatile uint16_t head;
+    volatile uint16_t tail;
+} stc_ringbuf_t;
+
+typedef struct {
+    stc_transport_t io;
+    stc_ringbuf_t   rx;
+    uint8_t         pkt_buf[512]; /* frame buffer (no 0x46/0xB9/0x16) */
+    uint8_t         pkt_dir;
+    uint16_t        pkt_len;      /* last payload length (excludes dir/len/csum) */
+    uint16_t        mcu_magic;
+    uint32_t        mcu_clk_hz;
+} stc_ctx_t;
+
+int  stc_init(stc_ctx_t *ctx, const stc_transport_t *io);
+void stc_rx_isr_byte(stc_ctx_t *ctx, uint8_t byte); /* call from UART RX ISR */
+int  stc_poll_packet(stc_ctx_t *ctx, uint8_t **payload, uint16_t *len); /* payload excludes dir/len/csum */
+int  stc_wait_packet(stc_ctx_t *ctx, uint8_t **payload, uint16_t *len, uint32_t timeout_ms);
+int  stc_send_packet(stc_ctx_t *ctx, const uint8_t *payload, uint16_t len, int use16csum);
+
+/* Protocol helpers (extend with more commands as needed) */
+int  stc_sync_pulse(stc_ctx_t *ctx, uint8_t pulse, uint32_t timeout_ms);
+int  stc_handshake_12_15(stc_ctx_t *ctx, uint16_t mcu_magic, uint32_t baud_new);
+int  stc_erase_blocks(stc_ctx_t *ctx, uint16_t blocks);
+int  stc_write_block(stc_ctx_t *ctx, uint16_t addr, const uint8_t *data, uint16_t len);
+
+#endif /* STC_PROG_H */

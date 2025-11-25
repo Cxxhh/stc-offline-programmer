@@ -79,6 +79,20 @@ bsp_spi_dma_status_t bsp_spi_dma_transmit_receive(const uint8_t* tx_buf,
  */
 bsp_spi_dma_device_t bsp_spi_dma_get_current_device(void);
 
+/**
+ * @brief 设置SPI数据宽度
+ * @param data_width LL_SPI_DATAWIDTH_8BIT 或 LL_SPI_DATAWIDTH_4BIT
+ * @note 需要在SPI禁用状态下调用，或确保没有正在进行的传输
+ */
+void bsp_spi_set_data_width(uint32_t data_width);
+
+/**
+ * @brief 设置SPI波特率分频器
+ * @param prescaler LL_SPI_BAUDRATEPRESCALER_DIV2/4/8/16/32/64/128/256
+ * @note 需要在SPI禁用状态下调用，或确保没有正在进行的传输
+ */
+void bsp_spi_set_baudrate_prescaler(uint32_t prescaler);
+
 /* Exported callback functions -----------------------------------------------*/
 /* @note 以下函数由stm32g4xx_it.c中的DMA中断处理器调用 */
 

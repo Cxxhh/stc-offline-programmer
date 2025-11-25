@@ -1,0 +1,161 @@
+#include "stc_prog.h"
+
+static int rb_pop(stc_ringbuf_t *rb, uint8_t *out) {
+    if (rb->head == rb->tail) return 0;
+    *out = rb->buf[rb->tail];
+    rb->tail = (uint16_t)((rb->tail + 1) % STC_RX_RB_SIZE);
+    return 1;
+}
+
+static int rb_push(stc_ringbuf_t *rb, uint8_t b) {
+    uint16_t n = (uint16_t)((rb->head + 1) % STC_RX_RB_SIZE);
+    if (n == rb->tail) return 0; /* overflow */
+    rb->buf[rb->head] = b;
+    rb->head = n;
+    return 1;
+}
+
+/* Verify checksum; returns 1 on match and outputs payload_len, preferring 16-bit csum. */
+static int stc_checksum_ok(const uint8_t *frame, uint16_t total, int *use16, uint16_t *payload_len) {
+    if (total < 4) return 0; /* dir + lenH + lenL + csum */
+
+    if (total >= 5) { /* try 16-bit first */
+        uint32_t sum = 0;
+        for (uint16_t i = 0; i < (uint16_t)(total - 2); ++i) sum += frame[i];
+        uint16_t c16 = (uint16_t)sum;
+        if (frame[total - 2] == (uint8_t)(c16 >> 8) && frame[total - 1] == (uint8_t)c16) {
+            if (use16) *use16 = 1;
+            if (payload_len) *payload_len = (uint16_t)(total - 5); /* strip dir/len/csum(2) */
+            return 1;
+        }
+    }
+
+    { /* fall back to 8-bit checksum */
+        uint32_t sum = 0;
+        for (uint16_t i = 0; i < (uint16_t)(total - 1); ++i) sum += frame[i];
+        uint8_t c8 = (uint8_t)sum;
+        if (frame[total - 1] == c8) {
+            if (use16) *use16 = 0;
+            if (payload_len) *payload_len = (uint16_t)(total - 4); /* strip dir/len/csum(1) */
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int stc_init(stc_ctx_t *ctx, const stc_transport_t *io) {
+    *ctx = (stc_ctx_t){0};
+    ctx->io = *io;
+    return 0;
+}
+
+void stc_rx_isr_byte(stc_ctx_t *ctx, uint8_t byte) {
+    rb_push(&ctx->rx, byte);
+}
+
+/* Parse STC frame: 46 B9 dir lenH lenL ... csum ... 16 */
+int stc_poll_packet(stc_ctx_t *ctx, uint8_t **payload, uint16_t *len) {
+    enum { S0, S1, SDIR, SLENH, SLENL, SPAY, SEND } static state = S0;
+    static uint16_t need = 0, idx = 0;
+    uint8_t b;
+    while (rb_pop(&ctx->rx, &b)) {
+        switch (state) {
+        case S0: if (b == 0x46) state = S1; break;
+        case S1: if (b == 0xB9) state = SDIR; else state = S0; break;
+        case SDIR: ctx->pkt_buf[0] = b; state = SLENH; break;
+        case SLENH: ctx->pkt_buf[1] = b; state = SLENL; break;
+        case SLENL:
+            ctx->pkt_buf[2] = b;
+            need = (uint16_t)((ctx->pkt_buf[1] << 8) | ctx->pkt_buf[2]);
+            idx = 0;
+            if (need > sizeof(ctx->pkt_buf)) { state = S0; break; }
+            state = SPAY; break;
+        case SPAY:
+            if ((3 + idx) >= sizeof(ctx->pkt_buf)) { state = S0; break; }
+            ctx->pkt_buf[3 + idx++] = b;
+            if (idx >= need - 3) state = SEND;
+            break;
+        case SEND: {
+            if (b != 0x16) { state = S0; break; }
+            uint16_t payload_len = 0;
+            int use16 = 0;
+            if (!stc_checksum_ok(ctx->pkt_buf, need, &use16, &payload_len)) {
+                state = S0; break;
+            }
+            ctx->pkt_dir = ctx->pkt_buf[0];
+            ctx->pkt_len = payload_len;
+            *payload = &ctx->pkt_buf[3];
+            *len = payload_len;
+            state = S0;
+            return 1;
+        }
+        }
+    }
+    return 0;
+}
+
+int stc_wait_packet(stc_ctx_t *ctx, uint8_t **payload, uint16_t *len, uint32_t timeout_ms) {
+    if (!ctx->io.now_ms) return -2;
+    uint32_t start = ctx->io.now_ms();
+    while ((ctx->io.now_ms() - start) <= timeout_ms) {
+        if (stc_poll_packet(ctx, payload, len)) return 0;
+    }
+    return -1; /* timeout */
+}
+
+/* use16csum: STC12/15/8 use 16-bit checksum, STC89 uses 8-bit */
+int stc_send_packet(stc_ctx_t *ctx, const uint8_t *pl, uint16_t len, int use16csum) {
+    uint8_t *p = ctx->pkt_buf;
+    p[0] = 0x46; p[1] = 0xB9; p[2] = 0x6A;
+    uint16_t total = (uint16_t)(len + (use16csum ? 6 : 5));
+    p[3] = (uint8_t)(total >> 8);
+    p[4] = (uint8_t)(total & 0xFF);
+    for (uint16_t i = 0; i < len; ++i) p[5 + i] = pl[i];
+    uint32_t csum = 0;
+    for (uint16_t i = 2; i < (uint16_t)(5 + len); ++i) csum += p[i];
+    uint16_t pos = (uint16_t)(5 + len);
+    if (use16csum) { p[pos++] = (uint8_t)((csum >> 8) & 0xFF); p[pos++] = (uint8_t)(csum & 0xFF); }
+    else           { p[pos++] = (uint8_t)(csum & 0xFF); }
+    p[pos++] = 0x16;
+    return ctx->io.tx(p, pos);
+}
+
+int stc_sync_pulse(stc_ctx_t *ctx, uint8_t pulse, uint32_t timeout_ms) {
+    uint32_t start = ctx->io.now_ms ? ctx->io.now_ms() : 0;
+    while (!ctx->io.now_ms || (ctx->io.now_ms() - start) < timeout_ms) {
+        ctx->io.tx(&pulse, 1);
+        if (ctx->rx.head != ctx->rx.tail) return 0;
+    }
+    return -1; /* timeout */
+}
+
+/* Typical STC12/15 baud handshake (brt/brt_csum must be precomputed by caller) */
+int stc_handshake_12_15(stc_ctx_t *ctx, uint16_t mcu_magic, uint32_t baud_new) {
+    uint8_t pkt1[] = {0x50, 0x00, 0x00, 0x36, 0x01, (uint8_t)(mcu_magic >> 8), (uint8_t)mcu_magic};
+    stc_send_packet(ctx, pkt1, sizeof(pkt1), 1);
+
+    uint8_t pkt2[] = {0x8F, 0xC0, 0x00, 0x3F, 0x00, 0x80, 0x82}; /* brt/brt_csum must be patched */
+    stc_send_packet(ctx, pkt2, sizeof(pkt2), 1);
+    ctx->io.set_baud(baud_new);
+
+    uint8_t pkt3[] = {0x8E, 0xC0, pkt2[2], 0x3F, pkt2[4], pkt2[5]};
+    stc_send_packet(ctx, pkt3, sizeof(pkt3), 1);
+    return 0;
+}
+
+int stc_erase_blocks(stc_ctx_t *ctx, uint16_t blocks) {
+    uint8_t pkt[] = {0x84, 0xFF, 0x00, (uint8_t)blocks, 0x00, 0x00, (uint8_t)blocks,
+                     0,0,0,0,0,0,0,0,0,0,0};
+    return stc_send_packet(ctx, pkt, sizeof(pkt), 1);
+}
+
+int stc_write_block(stc_ctx_t *ctx, uint16_t addr, const uint8_t *data, uint16_t len) {
+    /* STC12/15: payload = [0x80, addrH, addrL, lenH, lenL, data..., pad] */
+    uint16_t paylen = (uint16_t)(5 + len);
+    if (paylen > (uint16_t)(sizeof(ctx->pkt_buf) - 6)) return -1;
+    uint8_t *p = ctx->pkt_buf;
+    p[0] = 0x80; p[1] = (uint8_t)(addr >> 8); p[2] = (uint8_t)(addr & 0xFF);
+    p[3] = (uint8_t)(len >> 8); p[4] = (uint8_t)(len & 0xFF);
+    for (uint16_t i = 0; i < len; i++) p[5 + i] = data[i];
+    return stc_send_packet(ctx, p, paylen, 1);
+}
