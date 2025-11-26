@@ -30,8 +30,9 @@
 /* USER CODE BEGIN Includes */
 #include "../Service/log.h"
 #include "../Service/log_uart_adapter.h"
-#include "../APP/stc_isp.h"
+#include "lcd.h"
 #include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,13 +52,18 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+uint32_t adc_get[1] = {0};
+// 串口接收字符缓冲区（用于LCD显示）
+char uart2_rx_buffer[21] = {0}; // 20个字符 + 结束符
+uint8_t uart2_rx_updated = 0;   // 标志位，表示有新数据需要更新显示
+// 串口接收错误标志
+uint8_t uart2_rx_error = 0;     // 错误标志：1=校验错误(PE), 2=帧错误(FE), 3=噪声错误(NE), 4=溢出错误(ORE)
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-static void STC_Handshake_Demo(void);
+static void UpdateADC_Display(void);
 
 /* USER CODE END PFP */
 
@@ -102,7 +108,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_ADC_Start_DMA(&hadc2, (uint32_t *)adc_get, 1);
   // Initialize log service
   LCD_Init();
   LCD_Clear(Black);
@@ -124,8 +130,6 @@ int main(void)
     }
   }
 
-  LOG_INFO("Starting STC8 ISP handshake demo on USART2...");
-  STC_Handshake_Demo();
 
   /* USER CODE END 2 */
 
@@ -135,17 +139,30 @@ int main(void)
   {
     /* USER CODE END WHILE */
     // 通过USART2发送时间（每1秒发送一次）
-    static uint32_t last_send_time = 0;
-    uint32_t current_time = HAL_GetTick();
-    if (current_time - last_send_time >= 1000)
-    {
-      char uart2_time_str[32];
-      sprintf(uart2_time_str, "Time: %lu s\r\n", current_time / 1000);
-      USART2_SendString(uart2_time_str);
-      last_send_time = current_time;
-    }
+    // static uint32_t last_send_time = 0;
+    // uint32_t current_time = HAL_GetTick();
+    // if (current_time - last_send_time >= 1000)
+    // {
+    //   char uart2_time_str[32];
+    //   sprintf(uart2_time_str, "Time: %lu s\r\n", current_time / 1000);
+    //   USART2_SendString(uart2_time_str);
+    //   last_send_time = current_time;
+    // }
 
     /* USER CODE BEGIN 3 */
+    // 更新LCD最后一行显示串口接收到的字符
+    if (uart2_rx_updated)
+    {
+      LCD_SetTextColor(Cyan);
+      LCD_SetBackColor(Black);
+      // 格式化显示字符串（最多20个字符）
+      char display_str[21] = {0};
+      snprintf(display_str, sizeof(display_str), "%-20s", uart2_rx_buffer);
+      LCD_DisplayStringLine(Line9, (u8 *)display_str);
+      uart2_rx_updated = 0; // 清除更新标志
+    }
+    
+    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 }
@@ -198,37 +215,35 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 
 /**
- * @brief Perform one-shot STC8 handshake over USART2 with cold start.
- *        Disables USART2 RX interrupt during handshake to avoid ISR side effects.
+ * @brief 更新LCD显示ADC值
+ * @note  显示ADC原始值和计算后的电压值
  */
-static void STC_Handshake_Demo(void)
+static void UpdateADC_Display(void)
 {
-  STC_ISP_StatusTypeDef status;
+  char lcd_buffer[21] = {0};
+  // 从32位变量中读取16位ADC值（低16位有效）
+  uint16_t adc_raw = (uint16_t)(adc_get[0] & 0xFFFF);
 
-  // Prepare power control and UART handle
-  STC_ISP_Init(USART2);
+  // ADC是12位的，最大值4095
+  // 假设参考电压为3.3V（根据实际硬件调整）
+  float voltage = (float)adc_raw * 3.3f / 4095.0f;
 
-  // Avoid ISR echoing during handshake
-  NVIC_DisableIRQ(USART2_IRQn);
-  LL_USART_DisableIT_RXNE(USART2);
+  // 设置LCD颜色
+  LCD_SetTextColor(White);
+  LCD_SetBackColor(Black);
 
-  // Run handshake (reconfigures UART2 to 2400 baud, even parity internally)
-  status = STC_ISP_HandshakeTest(USART2);
+  // 第一行：显示标题
+  LCD_DisplayStringLine(Line0, (u8 *)"ADC Monitor PB15");
 
-  // Restore USART2 to normal 115200 8N1 and re-enable IRQ
-  MX_USART2_UART_Init();
-  LL_USART_EnableIT_RXNE(USART2);
-  NVIC_EnableIRQ(USART2_IRQn);
+  // 第二行：显示原始值
+  snprintf(lcd_buffer, sizeof(lcd_buffer), "Raw: %-5u", adc_raw);
+  LCD_DisplayStringLine(Line1, (u8 *)lcd_buffer);
 
-  if (status == STC_ISP_OK)
-  {
-    LOG_INFO("STC8 handshake succeeded");
-  }
-  else
-  {
-    LOG_ERROR("STC8 handshake failed, code=%d", status);
-  }
+  // 第三行：显示电压值
+  snprintf(lcd_buffer, sizeof(lcd_buffer), "Volt: %.3fV", voltage);
+  LCD_DisplayStringLine(Line2, (u8 *)lcd_buffer);
 }
+
 
 /* USER CODE END 4 */
 

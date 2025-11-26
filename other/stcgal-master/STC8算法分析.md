@@ -471,3 +471,4 @@ class Stc8Option(BaseOption):
 4. **数据对齐**：Flash 编程需要 64 字节对齐
 5. **超时处理**：各操作需要适当的超时机制
 
+

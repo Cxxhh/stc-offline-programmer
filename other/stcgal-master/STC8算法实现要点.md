@@ -329,3 +329,4 @@ void stc8_program(uint8_t *firmware, uint32_t len) {
 6. **块大小**：Flash编程块大小为64字节，需要对齐
 7. **分频器**：低频率通过分频器实现，校准在20-30MHz范围
 
+

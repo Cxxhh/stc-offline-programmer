@@ -1,8 +1,5 @@
 # Keil MDK-ARM build outputs
 MDK-ARM/build/
-MDK-ARM/*.uvguix.*
-MDK-ARM/*.uvoptx
-MDK-ARM/*.uvprojx.bak
 MDK-ARM/*.lnp
 MDK-ARM/*.lst
 MDK-ARM/*.htm

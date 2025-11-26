@@ -26,7 +26,19 @@
 #include "stm32g4xx_ll_dma.h"
 #include "stm32g4xx_ll_usart.h"
 #include "../BSP/bsp_spi.h"
+#include <string.h>
 /* USER CODE END Includes */
+
+/* External variables ---------------------------------------------------------*/
+/* USER CODE BEGIN EV */
+extern char uart2_rx_buffer[21];
+extern uint8_t uart2_rx_updated;
+extern uint8_t uart2_rx_error;  // 错误标志：1=校验错误(PE), 2=帧错误(FE), 3=噪声错误(NE), 4=溢出错误(ORE)
+/* USER CODE END EV */
+/* USER CODE BEGIN EV */
+extern char uart2_rx_buffer[21];
+extern uint8_t uart2_rx_updated;
+/* USER CODE END EV */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */
@@ -317,11 +329,105 @@ void USART2_IRQHandler(void)
 {
   /* USER CODE BEGIN USART2_IRQn 0 */
   uint8_t data;
+  
+  // 首先检查并清除错误标志（防止0xFF干扰）
+  // 这些错误通常是由于校验位不匹配、帧错误等引起的
+  if (LL_USART_IsActiveFlag_ORE(USART2))
+  {
+    LL_USART_ClearFlag_ORE(USART2);
+    // 读取DR寄存器以清除ORE标志
+    uint8_t error_data = LL_USART_ReceiveData8(USART2);
+    // 记录错误类型
+    uart2_rx_error = 4; // ORE错误
+    strncpy(uart2_rx_buffer, "ERR: Overrun", 20);
+    uart2_rx_buffer[20] = '\0';
+    uart2_rx_updated = 1;
+  }
+  if (LL_USART_IsActiveFlag_FE(USART2))
+  {
+    LL_USART_ClearFlag_FE(USART2);
+    // 读取DR寄存器以清除FE标志（帧错误）
+    uint8_t error_data = LL_USART_ReceiveData8(USART2);
+    // 记录错误类型
+    uart2_rx_error = 2; // FE错误
+    strncpy(uart2_rx_buffer, "ERR: Frame Error", 20);
+    uart2_rx_buffer[20] = '\0';
+    uart2_rx_updated = 1;
+  }
+  if (LL_USART_IsActiveFlag_NE(USART2))
+  {
+    LL_USART_ClearFlag_NE(USART2);
+    // 读取DR寄存器以清除NE标志（噪声错误）
+    uint8_t error_data = LL_USART_ReceiveData8(USART2);
+    // 记录错误类型
+    uart2_rx_error = 3; // NE错误
+    strncpy(uart2_rx_buffer, "ERR: Noise Error", 20);
+    uart2_rx_buffer[20] = '\0';
+    uart2_rx_updated = 1;
+  }
+  if (LL_USART_IsActiveFlag_PE(USART2))
+  {
+    LL_USART_ClearFlag_PE(USART2);
+    // 读取DR寄存器以清除PE标志（校验错误）
+    // 校验错误时读取的数据可能是0xFF
+    uint8_t error_data = LL_USART_ReceiveData8(USART2);
+    // 校验错误：说明发送端和接收端的校验位不匹配
+    // 记录错误类型
+    uart2_rx_error = 1; // PE错误
+    // 显示错误信息
+    strncpy(uart2_rx_buffer, "ERR: Parity Error", 20);
+    uart2_rx_buffer[20] = '\0';
+    uart2_rx_updated = 1;
+  }
+  
+  // 正常接收数据（只有在没有错误标志时才处理）
   if (LL_USART_IsEnabledIT_RXNE(USART2) && LL_USART_IsActiveFlag_RXNE(USART2))
   {
-    data = LL_USART_ReceiveData8(USART2);
-    // 注意：读取DR寄存器会自动清除RXNE标志，无需手动清除
-    HandleUart2IT(data);
+    // 再次检查是否有错误标志（读取数据前）
+    if (!LL_USART_IsActiveFlag_PE(USART2) && 
+        !LL_USART_IsActiveFlag_FE(USART2) && 
+        !LL_USART_IsActiveFlag_NE(USART2))
+    {
+      data = LL_USART_ReceiveData8(USART2);
+      // 注意：读取DR寄存器会自动清除RXNE标志，无需手动清除
+      // 清除错误标志（接收到正常数据）
+      uart2_rx_error = 0;
+      HandleUart2IT(data);
+    }
+    else
+    {
+      // 有错误标志，先清除错误标志
+      if (LL_USART_IsActiveFlag_PE(USART2))
+      {
+        LL_USART_ClearFlag_PE(USART2);
+      }
+      if (LL_USART_IsActiveFlag_FE(USART2))
+      {
+        LL_USART_ClearFlag_FE(USART2);
+        uart2_rx_error = 2; // FE错误
+        strncpy(uart2_rx_buffer, "ERR: Frame Error", 20);
+        uart2_rx_buffer[20] = '\0';
+        uart2_rx_updated = 1;
+      }
+      if (LL_USART_IsActiveFlag_NE(USART2))
+      {
+        LL_USART_ClearFlag_NE(USART2);
+        uart2_rx_error = 3; // NE错误
+        strncpy(uart2_rx_buffer, "ERR: Noise Error", 20);
+        uart2_rx_buffer[20] = '\0';
+        uart2_rx_updated = 1;
+      }
+      // 读取并丢弃错误数据
+      uint8_t error_data = LL_USART_ReceiveData8(USART2);
+      // 如果是0xFF，说明可能是校验错误导致的
+      if (error_data == 0xFF)
+      {
+        uart2_rx_error = 1; // 可能是PE错误
+        strncpy(uart2_rx_buffer, "RX: 0xFF (Error)", 20);
+        uart2_rx_buffer[20] = '\0';
+        uart2_rx_updated = 1;
+      }
+    }
   }
   /* USER CODE END USART2_IRQn 0 */
   /* USER CODE BEGIN USART2_IRQn 1 */
@@ -359,6 +465,53 @@ void HandleUartIT(uint8_t data)
  */
 void HandleUart2IT(uint8_t data)
 {
+  // 将接收到的字符存入缓冲区（用于LCD显示）
+  static uint8_t buffer_index = 0;
+  
+  // 处理接收到的字符
+  if (data >= 32 && data <= 126)
+  {
+    // 可打印字符，直接存入缓冲区
+    if (buffer_index < 20)
+    {
+      uart2_rx_buffer[buffer_index] = (char)data;
+      buffer_index++;
+      uart2_rx_buffer[buffer_index] = '\0'; // 确保字符串结束
+    }
+    else
+    {
+      // 缓冲区已满，向左移动（FIFO），保持最新20个字符
+      for (uint8_t i = 0; i < 19; i++)
+      {
+        uart2_rx_buffer[i] = uart2_rx_buffer[i + 1];
+      }
+      uart2_rx_buffer[19] = (char)data;
+      uart2_rx_buffer[20] = '\0';
+      buffer_index = 20; // 保持索引为20，继续使用FIFO模式
+    }
+    uart2_rx_updated = 1; // 标记有新数据需要更新显示
+  }
+  else
+  {
+    // 非可打印字符（包括0x7F），以十六进制形式显示
+    // 格式：RX: 0xXX
+    uart2_rx_buffer[0] = 'R';
+    uart2_rx_buffer[1] = 'X';
+    uart2_rx_buffer[2] = ':';
+    uart2_rx_buffer[3] = ' ';
+    uart2_rx_buffer[4] = '0';
+    uart2_rx_buffer[5] = 'x';
+    // 高4位
+    uint8_t high_nibble = (data >> 4) & 0x0F;
+    uart2_rx_buffer[6] = (high_nibble < 10) ? ('0' + high_nibble) : ('A' + high_nibble - 10);
+    // 低4位
+    uint8_t low_nibble = data & 0x0F;
+    uart2_rx_buffer[7] = (low_nibble < 10) ? ('0' + low_nibble) : ('A' + low_nibble - 10);
+    uart2_rx_buffer[8] = '\0';
+    buffer_index = 0; // 重置索引，下次从新字符开始
+    uart2_rx_updated = 1; // 标记有新数据需要更新显示
+  }
+  
   // 等待USART1发送寄存器为空
   while (!LL_USART_IsActiveFlag_TXE(USART1))
   {
