@@ -132,37 +132,149 @@ int main(void)
 
 
   /* USER CODE END 2 */
+  
+  // 禁用USART2接收中断，改用轮询方式
+  LL_USART_DisableIT_RXNE(USART2);
+  
+  // STC8握手帧头: 46 B9 68
+  static const uint8_t STC8_FRAME_HEADER[3] = {0x46, 0xB9, 0x68};
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     /* USER CODE END WHILE */
-    // 通过USART2发送时间（每1秒发送一次）
-    // static uint32_t last_send_time = 0;
-    // uint32_t current_time = HAL_GetTick();
-    // if (current_time - last_send_time >= 1000)
-    // {
-    //   char uart2_time_str[32];
-    //   sprintf(uart2_time_str, "Time: %lu s\r\n", current_time / 1000);
-    //   USART2_SendString(uart2_time_str);
-    //   last_send_time = current_time;
-    // }
 
     /* USER CODE BEGIN 3 */
-    // 更新LCD最后一行显示串口接收到的字符
-    if (uart2_rx_updated)
+    // STC8握手：每30ms发送0x7F，等待BSL响应帧(46 B9 68开头)
+    static uint32_t tx_count = 0;
+    static uint8_t frame_detected = 0;
+    static uint8_t rx_buffer[64] = {0};  // 接收缓冲区
+    static uint8_t rx_index = 0;
+    char lcd_buffer[21] = {0};
+    
+    // 清除可能存在的错误标志
+    if (LL_USART_IsActiveFlag_ORE(USART2)) LL_USART_ClearFlag_ORE(USART2);
+    if (LL_USART_IsActiveFlag_FE(USART2)) LL_USART_ClearFlag_FE(USART2);
+    if (LL_USART_IsActiveFlag_NE(USART2)) LL_USART_ClearFlag_NE(USART2);
+    if (LL_USART_IsActiveFlag_PE(USART2)) LL_USART_ClearFlag_PE(USART2);
+    
+    // 发送0x7F握手字节
+    while (!LL_USART_IsActiveFlag_TXE(USART2))
     {
-      LCD_SetTextColor(Cyan);
-      LCD_SetBackColor(Black);
-      // 格式化显示字符串（最多20个字符）
-      char display_str[21] = {0};
-      snprintf(display_str, sizeof(display_str), "%-20s", uart2_rx_buffer);
-      LCD_DisplayStringLine(Line9, (u8 *)display_str);
-      uart2_rx_updated = 0; // 清除更新标志
+      // 等待发送寄存器为空
+    }
+    LL_USART_TransmitData8(USART2, 0x7F);
+    
+    // 等待发送完成
+    while (!LL_USART_IsActiveFlag_TC(USART2))
+    {
+      // 等待传输完成
     }
     
-    HAL_Delay(100);
+    tx_count++;
+    
+    // 轮询接收（在30ms内尽量多接收数据）
+    uint32_t start_tick = HAL_GetTick();
+    while ((HAL_GetTick() - start_tick) < 30)  // 30ms超时
+    {
+      // 检查错误标志
+      if (LL_USART_IsActiveFlag_ORE(USART2))
+      {
+        LL_USART_ClearFlag_ORE(USART2);
+        LL_USART_ReceiveData8(USART2);  // 清除数据
+      }
+      if (LL_USART_IsActiveFlag_FE(USART2))
+      {
+        LL_USART_ClearFlag_FE(USART2);
+      }
+      if (LL_USART_IsActiveFlag_PE(USART2))
+      {
+        LL_USART_ClearFlag_PE(USART2);
+      }
+      
+      // 检查是否有数据接收
+      if (LL_USART_IsActiveFlag_RXNE(USART2))
+      {
+        uint8_t data = LL_USART_ReceiveData8(USART2);
+        
+        // 存入缓冲区
+        if (rx_index < sizeof(rx_buffer))
+        {
+          rx_buffer[rx_index++] = data;
+        }
+        
+        // 检查是否收到帧头 46 B9 68
+        if (rx_index >= 3)
+        {
+          // 在缓冲区中搜索帧头
+          for (uint8_t i = 0; i <= rx_index - 3; i++)
+          {
+            if (rx_buffer[i] == STC8_FRAME_HEADER[0] &&
+                rx_buffer[i+1] == STC8_FRAME_HEADER[1] &&
+                rx_buffer[i+2] == STC8_FRAME_HEADER[2])
+            {
+              frame_detected = 1;
+              break;
+            }
+          }
+        }
+      }
+    }
+    
+    // 显示状态到LCD
+    LCD_SetTextColor(White);
+    LCD_SetBackColor(Black);
+    
+    LCD_DisplayStringLine(Line0, (u8 *)"STC8 ISP Handshake");
+    LCD_DisplayStringLine(Line1, (u8 *)"2400bps EVEN parity");
+    
+    snprintf(lcd_buffer, sizeof(lcd_buffer), "TX 0x7F: %lu", tx_count);
+    LCD_DisplayStringLine(Line2, (u8 *)lcd_buffer);
+    
+    // 显示接收状态
+    if (frame_detected)
+    {
+      LCD_SetTextColor(Green);
+      LCD_DisplayStringLine(Line3, (u8 *)"Frame: 46 B9 68 OK!");
+      
+      // 显示接收到的前几个字节
+      LCD_SetTextColor(Cyan);
+      snprintf(lcd_buffer, sizeof(lcd_buffer), "RX:%02X %02X %02X %02X %02X",
+               rx_buffer[0], rx_buffer[1], rx_buffer[2],
+               rx_index > 3 ? rx_buffer[3] : 0,
+               rx_index > 4 ? rx_buffer[4] : 0);
+      LCD_DisplayStringLine(Line4, (u8 *)lcd_buffer);
+    }
+    else if (rx_index > 0)
+    {
+      LCD_SetTextColor(Yellow);
+      snprintf(lcd_buffer, sizeof(lcd_buffer), "RX %d bytes", rx_index);
+      LCD_DisplayStringLine(Line3, (u8 *)lcd_buffer);
+      
+      // 显示接收到的数据（最多显示5字节）
+      snprintf(lcd_buffer, sizeof(lcd_buffer), "Data:%02X %02X %02X %02X %02X",
+               rx_buffer[0],
+               rx_index > 1 ? rx_buffer[1] : 0,
+               rx_index > 2 ? rx_buffer[2] : 0,
+               rx_index > 3 ? rx_buffer[3] : 0,
+               rx_index > 4 ? rx_buffer[4] : 0);
+      LCD_DisplayStringLine(Line4, (u8 *)lcd_buffer);
+    }
+    else
+    {
+      LCD_SetTextColor(Red);
+      LCD_DisplayStringLine(Line3, (u8 *)"Waiting STC8...");
+      LCD_DisplayStringLine(Line4, (u8 *)"Power on STC8 now!");
+    }
+    
+    // 如果检测到帧头，不再清空缓冲区，保持状态
+    if (!frame_detected)
+    {
+      // 清空接收缓冲区，准备下一轮
+      rx_index = 0;
+      memset(rx_buffer, 0, sizeof(rx_buffer));
+    }
   }
   /* USER CODE END 3 */
 }

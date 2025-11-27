@@ -86,9 +86,7 @@ virtualFolder:
         - path: ../Service/log_uart_adapter.h
       folders: []
     - name: APP
-      files:
-        - path: ../APP/stc_isp.c
-        - path: ../APP/stc_isp.h
+      files: []
       folders: []
 dependenceList: []
 outDir: build
@@ -232,6 +230,6 @@ targets:
       OpenOCD:
         baseAddr: "0x08000000"
         bin: ""
-        interface: cmsis-dap-v1
+        interface: my-dap
         target: stm32g4x
     uploader: OpenOCD
