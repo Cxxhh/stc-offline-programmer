@@ -86,7 +86,13 @@ virtualFolder:
         - path: ../Service/log_uart_adapter.h
       folders: []
     - name: APP
-      files: []
+      files:
+        - path: ../stc_isp/stc_isp_protocol.c
+        - path: ../stc_isp/stc_isp_protocol.h
+        - path: ../stc_isp/stc_mcu_database.c
+        - path: ../stc_isp/stc_mcu_database.h
+        - path: ../stc_isp/stc_hal.c
+        - path: ../stc_isp/stc_hal.h
       folders: []
 dependenceList: []
 outDir: build
@@ -112,6 +118,7 @@ targets:
         - RTE/_HAL_06_LCD
         - ../Service
         - ../APP
+        - ../stc_isp
       libList: []
     excludeList: []
     toolchain: AC5
