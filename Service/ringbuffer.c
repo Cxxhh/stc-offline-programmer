@@ -1,9 +1,9 @@
 /**
   ******************************************************************************
   * @file    ringbuffer.c
-  * @brief   环形缓冲区服务层实现文件
+  * @brief   环形缓冲区服务层实现文件（面向对象风格）
   *          支持动态注册，注册时指定缓冲区大小
-  * @version V1.0.0
+  * @version V2.0.0
   * @date    2025-12-01
   ******************************************************************************
   */
@@ -19,7 +19,7 @@
 /**
  * @brief 环形缓冲区实例池
  */
-static ringbuffer_handle_t s_ringbuffer_pool[RINGBUFFER_MAX_INSTANCES];
+static ringbuffer_t s_ringbuffer_pool[RINGBUFFER_MAX_INSTANCES];
 
 /**
  * @brief 初始化标志
@@ -27,7 +27,23 @@ static ringbuffer_handle_t s_ringbuffer_pool[RINGBUFFER_MAX_INSTANCES];
 static bool s_initialized = false;
 
 /* Private function prototypes -----------------------------------------------*/
-static bool ringbuffer_is_valid(ringbuffer_handle_t *handle);
+static bool ringbuffer_is_valid(ringbuffer_t *self);
+
+/* 方法实现（将绑定到函数指针） */
+static ringbuffer_status_t _write_byte(ringbuffer_t *self, uint8_t data);
+static uint16_t _write(ringbuffer_t *self, const uint8_t *data, uint16_t len);
+static ringbuffer_status_t _read_byte(ringbuffer_t *self, uint8_t *data);
+static uint16_t _read(ringbuffer_t *self, uint8_t *data, uint16_t len);
+static ringbuffer_status_t _peek(ringbuffer_t *self, uint8_t *data);
+static uint16_t _peek_multiple(ringbuffer_t *self, uint8_t *data, uint16_t len);
+static uint16_t _discard(ringbuffer_t *self, uint16_t len);
+static uint16_t _get_count(ringbuffer_t *self);
+static uint16_t _get_free(ringbuffer_t *self);
+static uint16_t _get_size(ringbuffer_t *self);
+static bool _is_empty(ringbuffer_t *self);
+static bool _is_full(ringbuffer_t *self);
+static ringbuffer_status_t _clear(ringbuffer_t *self);
+static ringbuffer_status_t _reset(ringbuffer_t *self, uint8_t *buffer, uint16_t size);
 
 /* Exported functions --------------------------------------------------------*/
 
@@ -43,7 +59,7 @@ void ringbuffer_init(void)
 /**
  * @brief 注册一个环形缓冲区实例
  */
-ringbuffer_handle_t *ringbuffer_register(uint8_t *buffer, uint16_t size)
+ringbuffer_t *ringbuffer_register(uint8_t *buffer, uint16_t size)
 {
     // 参数检查
     if (buffer == NULL || size < 2)
@@ -62,14 +78,32 @@ ringbuffer_handle_t *ringbuffer_register(uint8_t *buffer, uint16_t size)
     {
         if (!s_ringbuffer_pool[i].is_registered)
         {
-            // 初始化实例
-            s_ringbuffer_pool[i].buffer = buffer;
-            s_ringbuffer_pool[i].size = size;
-            s_ringbuffer_pool[i].head = 0;
-            s_ringbuffer_pool[i].tail = 0;
-            s_ringbuffer_pool[i].is_registered = true;
+            ringbuffer_t *rb = &s_ringbuffer_pool[i];
 
-            return &s_ringbuffer_pool[i];
+            // 初始化数据成员
+            rb->buffer = buffer;
+            rb->size = size;
+            rb->head = 0;
+            rb->tail = 0;
+            rb->is_registered = true;
+
+            // 绑定方法（函数指针）
+            rb->write_byte = _write_byte;
+            rb->write = _write;
+            rb->read_byte = _read_byte;
+            rb->read = _read;
+            rb->peek = _peek;
+            rb->peek_multiple = _peek_multiple;
+            rb->discard = _discard;
+            rb->get_count = _get_count;
+            rb->get_free = _get_free;
+            rb->get_size = _get_size;
+            rb->is_empty = _is_empty;
+            rb->is_full = _is_full;
+            rb->clear = _clear;
+            rb->reset = _reset;
+
+            return rb;
         }
     }
 
@@ -80,7 +114,7 @@ ringbuffer_handle_t *ringbuffer_register(uint8_t *buffer, uint16_t size)
 /**
  * @brief 注销环形缓冲区实例
  */
-ringbuffer_status_t ringbuffer_unregister(ringbuffer_handle_t *handle)
+ringbuffer_status_t ringbuffer_unregister(ringbuffer_t *handle)
 {
     if (!ringbuffer_is_valid(handle))
     {
@@ -88,36 +122,34 @@ ringbuffer_status_t ringbuffer_unregister(ringbuffer_handle_t *handle)
     }
 
     // 清除实例
-    handle->buffer = NULL;
-    handle->size = 0;
-    handle->head = 0;
-    handle->tail = 0;
-    handle->is_registered = false;
+    memset(handle, 0, sizeof(ringbuffer_t));
 
     return RINGBUFFER_OK;
 }
 
+/* Private method implementations --------------------------------------------*/
+
 /**
  * @brief 写入单个字节
  */
-ringbuffer_status_t ringbuffer_write_byte(ringbuffer_handle_t *handle, uint8_t data)
+static ringbuffer_status_t _write_byte(ringbuffer_t *self, uint8_t data)
 {
-    if (!ringbuffer_is_valid(handle))
+    if (!ringbuffer_is_valid(self))
     {
         return RINGBUFFER_INVALID;
     }
 
-    uint16_t next_head = (handle->head + 1) % handle->size;
+    uint16_t next_head = (self->head + 1) % self->size;
 
     // 检查是否已满
-    if (next_head == handle->tail)
+    if (next_head == self->tail)
     {
         return RINGBUFFER_FULL;
     }
 
     // 写入数据
-    handle->buffer[handle->head] = data;
-    handle->head = next_head;
+    self->buffer[self->head] = data;
+    self->head = next_head;
 
     return RINGBUFFER_OK;
 }
@@ -125,9 +157,9 @@ ringbuffer_status_t ringbuffer_write_byte(ringbuffer_handle_t *handle, uint8_t d
 /**
  * @brief 写入多个字节
  */
-uint16_t ringbuffer_write(ringbuffer_handle_t *handle, const uint8_t *data, uint16_t len)
+static uint16_t _write(ringbuffer_t *self, const uint8_t *data, uint16_t len)
 {
-    if (!ringbuffer_is_valid(handle) || data == NULL || len == 0)
+    if (!ringbuffer_is_valid(self) || data == NULL || len == 0)
     {
         return 0;
     }
@@ -136,7 +168,7 @@ uint16_t ringbuffer_write(ringbuffer_handle_t *handle, const uint8_t *data, uint
 
     for (uint16_t i = 0; i < len; i++)
     {
-        if (ringbuffer_write_byte(handle, data[i]) != RINGBUFFER_OK)
+        if (_write_byte(self, data[i]) != RINGBUFFER_OK)
         {
             break;
         }
@@ -149,9 +181,9 @@ uint16_t ringbuffer_write(ringbuffer_handle_t *handle, const uint8_t *data, uint
 /**
  * @brief 读取单个字节
  */
-ringbuffer_status_t ringbuffer_read_byte(ringbuffer_handle_t *handle, uint8_t *data)
+static ringbuffer_status_t _read_byte(ringbuffer_t *self, uint8_t *data)
 {
-    if (!ringbuffer_is_valid(handle))
+    if (!ringbuffer_is_valid(self))
     {
         return RINGBUFFER_INVALID;
     }
@@ -162,14 +194,14 @@ ringbuffer_status_t ringbuffer_read_byte(ringbuffer_handle_t *handle, uint8_t *d
     }
 
     // 检查是否为空
-    if (handle->head == handle->tail)
+    if (self->head == self->tail)
     {
         return RINGBUFFER_EMPTY;
     }
 
     // 读取数据
-    *data = handle->buffer[handle->tail];
-    handle->tail = (handle->tail + 1) % handle->size;
+    *data = self->buffer[self->tail];
+    self->tail = (self->tail + 1) % self->size;
 
     return RINGBUFFER_OK;
 }
@@ -177,9 +209,9 @@ ringbuffer_status_t ringbuffer_read_byte(ringbuffer_handle_t *handle, uint8_t *d
 /**
  * @brief 读取多个字节
  */
-uint16_t ringbuffer_read(ringbuffer_handle_t *handle, uint8_t *data, uint16_t len)
+static uint16_t _read(ringbuffer_t *self, uint8_t *data, uint16_t len)
 {
-    if (!ringbuffer_is_valid(handle) || data == NULL || len == 0)
+    if (!ringbuffer_is_valid(self) || data == NULL || len == 0)
     {
         return 0;
     }
@@ -188,7 +220,7 @@ uint16_t ringbuffer_read(ringbuffer_handle_t *handle, uint8_t *data, uint16_t le
 
     for (uint16_t i = 0; i < len; i++)
     {
-        if (ringbuffer_read_byte(handle, &data[i]) != RINGBUFFER_OK)
+        if (_read_byte(self, &data[i]) != RINGBUFFER_OK)
         {
             break;
         }
@@ -201,9 +233,9 @@ uint16_t ringbuffer_read(ringbuffer_handle_t *handle, uint8_t *data, uint16_t le
 /**
  * @brief 查看单个字节（不移除）
  */
-ringbuffer_status_t ringbuffer_peek(ringbuffer_handle_t *handle, uint8_t *data)
+static ringbuffer_status_t _peek(ringbuffer_t *self, uint8_t *data)
 {
-    if (!ringbuffer_is_valid(handle))
+    if (!ringbuffer_is_valid(self))
     {
         return RINGBUFFER_INVALID;
     }
@@ -214,13 +246,13 @@ ringbuffer_status_t ringbuffer_peek(ringbuffer_handle_t *handle, uint8_t *data)
     }
 
     // 检查是否为空
-    if (handle->head == handle->tail)
+    if (self->head == self->tail)
     {
         return RINGBUFFER_EMPTY;
     }
 
     // 读取数据但不移动tail
-    *data = handle->buffer[handle->tail];
+    *data = self->buffer[self->tail];
 
     return RINGBUFFER_OK;
 }
@@ -228,21 +260,21 @@ ringbuffer_status_t ringbuffer_peek(ringbuffer_handle_t *handle, uint8_t *data)
 /**
  * @brief 查看多个字节（不移除）
  */
-uint16_t ringbuffer_peek_multiple(ringbuffer_handle_t *handle, uint8_t *data, uint16_t len)
+static uint16_t _peek_multiple(ringbuffer_t *self, uint8_t *data, uint16_t len)
 {
-    if (!ringbuffer_is_valid(handle) || data == NULL || len == 0)
+    if (!ringbuffer_is_valid(self) || data == NULL || len == 0)
     {
         return 0;
     }
 
-    uint16_t count = ringbuffer_get_count(handle);
+    uint16_t count = _get_count(self);
     uint16_t peek_len = (len < count) ? len : count;
-    uint16_t temp_tail = handle->tail;
+    uint16_t temp_tail = self->tail;
 
     for (uint16_t i = 0; i < peek_len; i++)
     {
-        data[i] = handle->buffer[temp_tail];
-        temp_tail = (temp_tail + 1) % handle->size;
+        data[i] = self->buffer[temp_tail];
+        temp_tail = (temp_tail + 1) % self->size;
     }
 
     return peek_len;
@@ -251,17 +283,17 @@ uint16_t ringbuffer_peek_multiple(ringbuffer_handle_t *handle, uint8_t *data, ui
 /**
  * @brief 丢弃指定数量的字节
  */
-uint16_t ringbuffer_discard(ringbuffer_handle_t *handle, uint16_t len)
+static uint16_t _discard(ringbuffer_t *self, uint16_t len)
 {
-    if (!ringbuffer_is_valid(handle) || len == 0)
+    if (!ringbuffer_is_valid(self) || len == 0)
     {
         return 0;
     }
 
-    uint16_t count = ringbuffer_get_count(handle);
+    uint16_t count = _get_count(self);
     uint16_t discard_len = (len < count) ? len : count;
 
-    handle->tail = (handle->tail + discard_len) % handle->size;
+    self->tail = (self->tail + discard_len) % self->size;
 
     return discard_len;
 }
@@ -269,89 +301,89 @@ uint16_t ringbuffer_discard(ringbuffer_handle_t *handle, uint16_t len)
 /**
  * @brief 获取缓冲区中可读数据量
  */
-uint16_t ringbuffer_get_count(ringbuffer_handle_t *handle)
+static uint16_t _get_count(ringbuffer_t *self)
 {
-    if (!ringbuffer_is_valid(handle))
+    if (!ringbuffer_is_valid(self))
     {
         return 0;
     }
 
-    if (handle->head >= handle->tail)
+    if (self->head >= self->tail)
     {
-        return handle->head - handle->tail;
+        return self->head - self->tail;
     }
     else
     {
-        return handle->size - handle->tail + handle->head;
+        return self->size - self->tail + self->head;
     }
 }
 
 /**
  * @brief 获取缓冲区剩余空间
  */
-uint16_t ringbuffer_get_free(ringbuffer_handle_t *handle)
+static uint16_t _get_free(ringbuffer_t *self)
 {
-    if (!ringbuffer_is_valid(handle))
+    if (!ringbuffer_is_valid(self))
     {
         return 0;
     }
 
     // 环形缓冲区实际可用空间为 size - 1（需要保留一个位置区分满和空）
-    return (handle->size - 1) - ringbuffer_get_count(handle);
+    return (self->size - 1) - _get_count(self);
 }
 
 /**
  * @brief 获取缓冲区总大小
  */
-uint16_t ringbuffer_get_size(ringbuffer_handle_t *handle)
+static uint16_t _get_size(ringbuffer_t *self)
 {
-    if (!ringbuffer_is_valid(handle))
+    if (!ringbuffer_is_valid(self))
     {
         return 0;
     }
 
-    return handle->size;
+    return self->size;
 }
 
 /**
  * @brief 检查缓冲区是否为空
  */
-bool ringbuffer_is_empty(ringbuffer_handle_t *handle)
+static bool _is_empty(ringbuffer_t *self)
 {
-    if (!ringbuffer_is_valid(handle))
+    if (!ringbuffer_is_valid(self))
     {
         return true;
     }
 
-    return (handle->head == handle->tail);
+    return (self->head == self->tail);
 }
 
 /**
  * @brief 检查缓冲区是否已满
  */
-bool ringbuffer_is_full(ringbuffer_handle_t *handle)
+static bool _is_full(ringbuffer_t *self)
 {
-    if (!ringbuffer_is_valid(handle))
+    if (!ringbuffer_is_valid(self))
     {
         return true;
     }
 
-    uint16_t next_head = (handle->head + 1) % handle->size;
-    return (next_head == handle->tail);
+    uint16_t next_head = (self->head + 1) % self->size;
+    return (next_head == self->tail);
 }
 
 /**
  * @brief 清空缓冲区
  */
-ringbuffer_status_t ringbuffer_clear(ringbuffer_handle_t *handle)
+static ringbuffer_status_t _clear(ringbuffer_t *self)
 {
-    if (!ringbuffer_is_valid(handle))
+    if (!ringbuffer_is_valid(self))
     {
         return RINGBUFFER_INVALID;
     }
 
-    handle->head = 0;
-    handle->tail = 0;
+    self->head = 0;
+    self->tail = 0;
 
     return RINGBUFFER_OK;
 }
@@ -359,9 +391,9 @@ ringbuffer_status_t ringbuffer_clear(ringbuffer_handle_t *handle)
 /**
  * @brief 重置缓冲区（更换底层缓冲区）
  */
-ringbuffer_status_t ringbuffer_reset(ringbuffer_handle_t *handle, uint8_t *buffer, uint16_t size)
+static ringbuffer_status_t _reset(ringbuffer_t *self, uint8_t *buffer, uint16_t size)
 {
-    if (!ringbuffer_is_valid(handle))
+    if (!ringbuffer_is_valid(self))
     {
         return RINGBUFFER_INVALID;
     }
@@ -371,36 +403,35 @@ ringbuffer_status_t ringbuffer_reset(ringbuffer_handle_t *handle, uint8_t *buffe
         return RINGBUFFER_ERROR;
     }
 
-    handle->buffer = buffer;
-    handle->size = size;
-    handle->head = 0;
-    handle->tail = 0;
+    self->buffer = buffer;
+    self->size = size;
+    self->head = 0;
+    self->tail = 0;
 
     return RINGBUFFER_OK;
 }
 
-/* Private functions ---------------------------------------------------------*/
+/* Private helper functions --------------------------------------------------*/
 
 /**
  * @brief 检查句柄是否有效
  */
-static bool ringbuffer_is_valid(ringbuffer_handle_t *handle)
+static bool ringbuffer_is_valid(ringbuffer_t *self)
 {
-    if (handle == NULL)
+    if (self == NULL)
     {
         return false;
     }
 
-    if (!handle->is_registered)
+    if (!self->is_registered)
     {
         return false;
     }
 
-    if (handle->buffer == NULL || handle->size < 2)
+    if (self->buffer == NULL || self->size < 2)
     {
         return false;
     }
 
     return true;
 }
-
