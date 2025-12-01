@@ -20,7 +20,6 @@
 #define STC_UART                USART2
 
 // 缓冲区大小定义
-#define RX_BUFFER_SIZE          256
 #define TX_BUFFER_SIZE          256
 
 // 超时定义（毫秒）
@@ -37,11 +36,6 @@
 
 /* ==================== 私有变量 ==================== */
 
-// 接收缓冲区
-static uint8_t rx_buffer[RX_BUFFER_SIZE];
-static volatile uint16_t rx_head = 0;  // 写入位置
-static volatile uint16_t rx_tail = 0;  // 读取位置
-
 // 发送缓冲区（如果需要）
 static uint8_t tx_buffer[TX_BUFFER_SIZE];
 
@@ -53,8 +47,6 @@ static volatile uint32_t system_tick = 0;
 static hal_status_enum uart_init(void);
 static void uart_deinit(void);
 static hal_status_enum uart_transmit(const uint8_t *data, uint16_t length);
-static hal_status_enum uart_receive(uint8_t *data, uint16_t length);
-static hal_status_enum uart_transmit_receive(const uint8_t *tx_data, uint8_t *rx_data, uint16_t length);
 
 static void delay_ms(uint32_t ms);
 static void delay_us(uint32_t us);
@@ -66,8 +58,6 @@ static hal_status_enum set_baudrate(uint32_t baudrate);
 static uint32_t get_baudrate(void);
 
 static uint32_t get_tick(void);
-static uint16_t get_rx_count(void);
-static void flush_rx(void);
 static void flush_tx(void);
 
 /* ==================== 公共函数 ==================== */
@@ -84,8 +74,6 @@ stc_hal_t stc_hal_get_instance(void)
     hal.fpinit = uart_init;
     hal.fpdeinit = uart_deinit;
     hal.fptransmit = uart_transmit;
-    hal.fpreceive = uart_receive;
-    hal.fptransmit_receive = uart_transmit_receive;
     
     // 延时函数
     hal.fpdelay_ms = delay_ms;
@@ -103,8 +91,6 @@ stc_hal_t stc_hal_get_instance(void)
     hal.fpget_tick = get_tick;
     
     // 缓冲区管理
-    hal.fpget_rx_count = get_rx_count;
-    hal.fpflush_rx = flush_rx;
     hal.fpflush_tx = flush_tx;
     
     // 回调函数（默认为NULL）
@@ -114,7 +100,6 @@ stc_hal_t stc_hal_get_instance(void)
     
     // 配置参数
     hal.timeout_ms = DEFAULT_TIMEOUT_MS;
-    hal.rx_buffer_size = RX_BUFFER_SIZE;
     hal.tx_buffer_size = TX_BUFFER_SIZE;
     
     return hal;
@@ -138,7 +123,6 @@ static hal_status_enum uart_init(void)
 {
     // USART2已在MX_USART2_UART_Init中初始化
     // 这里只需清空缓冲区和重置标志
-    flush_rx();
     flush_tx();
     
     return HAL_OK;
@@ -191,147 +175,6 @@ static hal_status_enum uart_transmit(const uint8_t *data, uint16_t length)
     }
     
     return HAL_OK;
-}
-
-/**
- * @brief UART接收数据（轮询方式）
- * @param data 接收缓冲区
- * @param length 要接收的数据长度
- * @return HAL_OK: 成功, HAL_TIMEOUT: 超时
- * 
- * @note 此函数从环形缓冲区读取数据（数据由中断填充）
- *       或直接轮询UART接收（根据实际需求选择）
- */
-static hal_status_enum uart_receive(uint8_t *data, uint16_t length)
-{
-    uint32_t start_tick = get_tick();
-    uint16_t received = 0;
-    
-    HAL_CHECK_NULL(data);
-    
-    while (received < length)
-    {
-        // 检查是否有数据可读
-        if (LL_USART_IsActiveFlag_RXNE(STC_UART))
-        {
-            // 读取数据
-            data[received] = LL_USART_ReceiveData8(STC_UART);
-            received++;
-            
-            // 重置超时计时器（收到数据后）
-            start_tick = get_tick();
-        }
-        
-        // 检查超时
-        if (HAL_TIMEOUT_CHECK(start_tick, DEFAULT_TIMEOUT_MS, get_tick))
-        {
-            return HAL_TIMEOUT;
-        }
-    }
-    
-    return HAL_OK;
-}
-
-/**
- * @brief UART收发数据（先发后收）
- * @param tx_data 要发送的数据
- * @param rx_data 接收缓冲区
- * @param length 数据长度
- * @return HAL_OK: 成功, 其他: 失败
- * 
- * @note 这个函数适配STC协议的特性：发送命令后等待响应
- */
-static hal_status_enum uart_transmit_receive(const uint8_t *tx_data, uint8_t *rx_data, uint16_t length)
-{
-    hal_status_enum status;
-    
-    // 先发送
-    status = uart_transmit(tx_data, length);
-    if (status != HAL_OK)
-    {
-        return status;
-    }
-    
-    // 再接收
-    status = uart_receive(rx_data, length);
-    return status;
-}
-
-/**
- * @brief STC专用接收函数：等待并接收完整的数据包
- * @param data 接收缓冲区
- * @param max_length 缓冲区最大长度
- * @param timeout_ms 超时时间（毫秒）
- * @return 实际接收的字节数，0表示超时或错误
- * 
- * @note 此函数会持续接收直到没有更多数据到达
- *       适合STC协议中等待MCU响应的场景
- */
-uint16_t stc_hal_receive_packet(uint8_t *data, uint16_t max_length, uint32_t timeout_ms)
-{
-    uint32_t start_tick = get_tick();
-    uint32_t last_data_tick = start_tick;
-    uint16_t received = 0;
-    const uint32_t inter_byte_timeout = 10; // 字节间超时10ms
-    
-    if (data == NULL || max_length == 0)
-    {
-        return 0;
-    }
-    
-    while (received < max_length)
-    {
-        // 检查是否有数据可读
-        if (LL_USART_IsActiveFlag_RXNE(STC_UART))
-        {
-            // 读取数据
-            data[received] = LL_USART_ReceiveData8(STC_UART);
-            received++;
-            
-            // 更新最后接收数据的时间
-            last_data_tick = get_tick();
-        }
-        
-        // 如果已经接收到数据，检查字节间超时（说明数据包接收完成）
-        if (received > 0)
-        {
-            if (HAL_TIMEOUT_CHECK(last_data_tick, inter_byte_timeout, get_tick))
-            {
-                // 字节间超时，认为数据包接收完成
-                break;
-            }
-        }
-        
-        // 检查总超时
-        if (HAL_TIMEOUT_CHECK(start_tick, timeout_ms, get_tick))
-        {
-            break;
-        }
-    }
-    
-    return received;
-}
-
-/**
- * @brief 等待接收到数据的通用函数
- * @param timeout_ms 超时时间（毫秒）
- * @return true: 有数据, false: 超时无数据
- * 
- * @note 适用于握手阶段检测MCU是否有响应
- */
-bool stc_hal_wait_for_data(uint32_t timeout_ms)
-{
-    uint32_t start_tick = get_tick();
-    
-    while (!LL_USART_IsActiveFlag_RXNE(STC_UART))
-    {
-        if (HAL_TIMEOUT_CHECK(start_tick, timeout_ms, get_tick))
-        {
-            return false;
-        }
-    }
-    
-    return true;
 }
 
 /* ==================== 延时函数 ==================== */
@@ -466,7 +309,6 @@ static hal_status_enum set_baudrate(uint32_t baudrate)
            (!(LL_USART_IsActiveFlag_REACK(STC_UART))));
     
     // 清空缓冲区
-    flush_rx();
     flush_tx();
     
     return HAL_OK;
@@ -543,38 +385,6 @@ static uint32_t get_tick(void)
 /* ==================== 缓冲区管理函数 ==================== */
 
 /**
- * @brief 获取接收缓冲区数据量
- * @return 数据字节数
- */
-static uint16_t get_rx_count(void)
-{
-    // 如果使用环形缓冲区
-    if (rx_head >= rx_tail)
-    {
-        return rx_head - rx_tail;
-    }
-    else
-    {
-        return RX_BUFFER_SIZE - rx_tail + rx_head;
-    }
-}
-
-/**
- * @brief 清空接收缓冲区
- */
-static void flush_rx(void)
-{
-    rx_head = 0;
-    rx_tail = 0;
-    
-    // 清空硬件FIFO
-    while (LL_USART_IsActiveFlag_RXNE(STC_UART))
-    {
-        (void)LL_USART_ReceiveData8(STC_UART);
-    }
-}
-
-/**
  * @brief 清空发送缓冲区
  */
 static void flush_tx(void)
@@ -586,35 +396,3 @@ static void flush_tx(void)
     }
 }
 
-/* ==================== 中断处理函数（可选） ==================== */
-
-/**
- * @brief USART2中断处理函数（如果使用中断接收）
- * @note 需要在stm32l4xx_it.c中调用此函数
- */
-void stc_hal_uart_irq_handler(void)
-{
-    // 接收中断
-    if (LL_USART_IsActiveFlag_RXNE(STC_UART))
-    {
-        uint8_t data = LL_USART_ReceiveData8(STC_UART);
-        
-        // 写入环形缓冲区
-        uint16_t next_head = (rx_head + 1) % RX_BUFFER_SIZE;
-        if (next_head != rx_tail)
-        {
-            rx_buffer[rx_head] = data;
-            rx_head = next_head;
-        }
-        // 如果缓冲区满了，数据会被丢弃
-    }
-    
-    // 帧错误处理
-    if (LL_USART_IsActiveFlag_FE(STC_UART))
-    {
-        LL_USART_ClearFlag_FE(STC_UART);
-        // 可以在这里添加错误处理
-    }
-    
-    // 其他错误处理...
-}
