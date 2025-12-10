@@ -48,10 +48,14 @@ typedef enum {
     RINGBUFFER_NOMEM    = -4,   /**< 无可用实例 */
     RINGBUFFER_INVALID  = -5    /**< 无效句柄 */
 } ringbuffer_status_t;
+
+/* 前向声明：允许结构体内部的函数指针引用自身类型 */
+typedef struct ringbuffer_t ringbuffer_t;
+
 /**
  * @brief 环形缓冲区句柄结构定义（面向对象风格）
  */
- typedef struct  {
+struct ringbuffer_t {
     /* ========== 私有数据成员 ========== */
     uint8_t *buffer;            /**< 缓冲区指针（用户提供） */
     uint16_t size;              /**< 缓冲区总大小 */
@@ -170,7 +174,7 @@ typedef enum {
      * @return RINGBUFFER_OK: 成功
      */
     ringbuffer_status_t (*reset)(ringbuffer_t *self, uint8_t *buffer, uint16_t size);
-} ringbuffer_t ;
+};
 
 /* Exported functions prototypes ---------------------------------------------*/
 

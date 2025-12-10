@@ -74,7 +74,17 @@ virtualFolder:
         - path: ../BSP/bsp_sdcard_debug.h
         - path: ../BSP/bsp_spi.c
         - path: ../BSP/bsp_spi.h
-      folders: []
+      folders:
+        - name: Interface
+          files:
+            - path: ../BSP/Interface/dev_common.h
+            - path: ../BSP/Interface/dev_serial.h
+          folders: []
+        - name: Serial
+          files:
+            - path: ../BSP/Serial/bsp_stc_uart.c
+            - path: ../BSP/Serial/bsp_stc_uart.h
+          folders: []
     - name: ::CMSIS
       files: []
       folders: []
@@ -84,15 +94,30 @@ virtualFolder:
         - path: ../Service/log.h
         - path: ../Service/log_uart_adapter.c
         - path: ../Service/log_uart_adapter.h
+        - path: ../Service/ringbuffer.c
+        - path: ../Service/ringbuffer.h
       folders: []
+    - name: Port
+      files:
+        - path: ../Port/STM32G4/port_system.c
+        - path: ../Port/STM32G4/port_uart.c
+        - path: ../Port/port_def.h
+      folders: []
+    - name: stc_isp
+      files:
+        - path: ../stc_isp/stc_hal.c
+        - path: ../stc_isp/stc_isp_protocol.c
+        - path: ../stc_isp/stc_mcu_database.c
+      folders:
+        - name: Inc
+          files:
+            - path: ../stc_isp/stc_hal.h
+            - path: ../stc_isp/stc_isp_protocol.h
+            - path: ../stc_isp/stc_mcu_database.h
+          folders: []
     - name: APP
       files:
-        - path: ../stc_isp/stc_isp_protocol.c
-        - path: ../stc_isp/stc_isp_protocol.h
-        - path: ../stc_isp/stc_mcu_database.c
-        - path: ../stc_isp/stc_mcu_database.h
-        - path: ../stc_isp/stc_hal.c
-        - path: ../stc_isp/stc_hal.h
+        - path: ../APP/app_main.h
       folders: []
 dependenceList: []
 outDir: build
@@ -119,6 +144,9 @@ targets:
         - ../Service
         - ../APP
         - ../stc_isp
+        - ../BSP/Interface
+        - ../BSP/Serial
+        - ../Port
       libList: []
     excludeList: []
     toolchain: AC5

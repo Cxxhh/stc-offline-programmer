@@ -30,6 +30,8 @@
 /* USER CODE BEGIN Includes */
 #include "../Service/log.h"
 #include "../Service/log_uart_adapter.h"
+#include "../BSP/Serial/bsp_stc_uart.h"
+#include "../Port/port_def.h"
 #include "lcd.h"
 #include <stdio.h>
 #include <string.h>
@@ -129,7 +131,11 @@ int main(void)
 
   /* USER CODE END 2 */
 
-  // 禁用USART2接收中断，改用轮询方式
+  // 初始化STC通信串口BSP层（2400bps, 偶校验）
+  bsp_stc_uart_init(2400);
+  LOG_INFO("BSP STC UART initialized\r\n");
+
+  // 禁用BSP层中断接收，改用轮询方式进行握手测试
   LL_USART_DisableIT_RXNE(USART2);
 
   // STC8握手帧头: 46 B9 68

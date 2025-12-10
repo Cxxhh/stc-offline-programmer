@@ -48,7 +48,8 @@ OBJ/
 out/
 Out/
 OUT/
-
+.bmad-core/
+.cursor
 # Debug files
 *.suo
 *.user

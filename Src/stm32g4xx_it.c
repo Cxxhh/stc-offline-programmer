@@ -26,6 +26,7 @@
 #include "stm32g4xx_ll_dma.h"
 #include "stm32g4xx_ll_usart.h"
 #include "../BSP/bsp_spi.h"
+#include "../BSP/Serial/bsp_stc_uart.h"
 #include <string.h>
 /* USER CODE END Includes */
 
@@ -460,11 +461,17 @@ void HandleUartIT(uint8_t data)
 }
 
 /**
- * @brief 处理USART2接收到的数据并通过USART1发送
+ * @brief 处理USART2接收到的数据
  * @param data 接收到的数据
+ * @note  调用BSP层回调将数据写入环形缓冲区，
+ *        同时保留LCD显示和调试输出功能
  */
 void HandleUart2IT(uint8_t data)
 {
+  /* 调用BSP层回调 - 数据写入环形缓冲区 */
+  bsp_stc_uart_rx_callback(data);
+
+  /* 以下为调试用途，可根据需要保留或删除 */
   // 将接收到的字符存入缓冲区（用于LCD显示）
   static uint8_t buffer_index = 0;
   
@@ -518,7 +525,7 @@ void HandleUart2IT(uint8_t data)
     // 等待发送就绪
   }
 
-  // 将USART2接收到的数据通过USART1发送
+  // 将USART2接收到的数据通过USART1发送（调试输出）
   LL_USART_TransmitData8(USART1, data);
 
   // 等待发送完成
